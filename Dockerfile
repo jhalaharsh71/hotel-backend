@@ -13,9 +13,19 @@ RUN apt-get update && apt-get install -y \
     libfreetype6-dev \
     libonig-dev \
     libxml2-dev \
+    libpq-dev \
     zip \
     curl \
-    && docker-php-ext-install pdo_mysql mbstring zip exif pcntl bcmath gd
+    && docker-php-ext-install \
+        pdo \
+        pdo_mysql \
+        pdo_pgsql \
+        mbstring \
+        zip \
+        exif \
+        pcntl \
+        bcmath \
+        gd
 
 # Set working directory
 WORKDIR /var/www/html
@@ -40,4 +50,10 @@ RUN sed -ri 's!/var/www/!/var/www/html/public!g' /etc/apache2/apache2.conf /etc/
 
 EXPOSE 80
 
-CMD ["apache2-foreground"]
+# Clear cache, run migrations, start Apache
+CMD php artisan key:generate --force \
+ && php artisan config:clear \
+ && php artisan route:clear \
+ && php artisan cache:clear \
+ && php artisan migrate --force \
+ && apache2-foreground
