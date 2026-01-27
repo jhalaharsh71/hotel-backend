@@ -1,11 +1,6 @@
-# =========================
-# Base Image (STABLE)
-# =========================
 FROM php:8.2-cli
 
-# =========================
-# System Dependencies
-# =========================
+# System packages
 RUN apt-get update && apt-get install -y \
     git \
     unzip \
@@ -16,44 +11,26 @@ RUN apt-get update && apt-get install -y \
     libjpeg-dev \
     libfreetype6-dev \
     libxml2-dev \
-    nginx \
-    supervisor \
     && docker-php-ext-install \
         pdo \
         pdo_mysql \
-        mbstring \
         zip \
         bcmath \
         gd \
     && rm -rf /var/lib/apt/lists/*
 
-# =========================
 # Install Composer
-# =========================
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 
-# =========================
-# App Directory
-# =========================
+# App directory
 WORKDIR /var/www/html
 COPY . .
 
-# =========================
-# Install PHP Dependencies
-# =========================
+# Install Laravel dependencies
 RUN composer install --no-dev --optimize-autoloader --no-interaction
 
-# =========================
 # Permissions
-# =========================
 RUN chmod -R 775 storage bootstrap/cache
 
-# =========================
-# Expose Railway Port
-# =========================
-EXPOSE 8080
-
-# =========================
-# Start Laravel (Built-in server)
-# =========================
+# Start Laravel using Railway PORT
 CMD php artisan serve --host=0.0.0.0 --port=$PORT
