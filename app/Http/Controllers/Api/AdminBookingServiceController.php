@@ -27,6 +27,12 @@ class AdminBookingServiceController extends Controller
                 'message' => 'Cannot add services to unconfirmed bookings. Please confirm the booking first.'
             ], 422);
         }
+        
+        if( $booking->status === 'active' ) {
+            return response()->json([
+                'message' => 'Cannot add services to active bookings. Service should be added after check-in.'
+            ], 422);
+        }
 
         if ($booking->status === 'cancelled') {
             return response()->json([
