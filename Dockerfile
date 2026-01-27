@@ -1,9 +1,16 @@
+# =========================
+# Base Image
+# =========================
 FROM php:8.2-apache
 
-# Enable Apache rewrite
+# =========================
+# Enable Apache Rewrite
+# =========================
 RUN a2enmod rewrite
 
-# Install system dependencies
+# =========================
+# System Dependencies
+# =========================
 RUN apt-get update && apt-get install -y \
     git \
     unzip \
@@ -13,12 +20,11 @@ RUN apt-get update && apt-get install -y \
     libfreetype6-dev \
     libonig-dev \
     libxml2-dev \
-    libpq-dev \
     zip \
     curl \
+    && docker-php-ext-configure gd --with-freetype --with-jpeg \
     && docker-php-ext-install \
         pdo \
-        pdo_mysql \
         pdo_pgsql \
         mbstring \
         zip \
@@ -27,33 +33,57 @@ RUN apt-get update && apt-get install -y \
         bcmath \
         gd
 
-# Set working directory
+# =========================
+# Set Working Directory
+# =========================
 WORKDIR /var/www/html
 
-# Copy project files
+# =========================
+# Copy Project Files
+# =========================
 COPY . .
 
+# =========================
 # Install Composer
+# =========================
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 
-# Install PHP dependencies
-RUN composer install --no-dev --optimize-autoloader
+# =========================
+# Install PHP Dependencies
+# =========================
+RUN composer install --no-dev --optimize-autoloader --no-interaction
 
-# Laravel permissions
+# =========================
+# Laravel Permissions
+# =========================
 RUN chown -R www-data:www-data /var/www/html \
     && chmod -R 775 /var/www/html/storage /var/www/html/bootstrap/cache
 
-# Apache document root -> /public
-ENV APACHE_DOCUMENT_ROOT=/var/www/html/public
-RUN sed -ri 's!/var/www/html!/var/www/html/public!g' /etc/apache2/sites-available/*.conf
-RUN sed -ri 's!/var/www/!/var/www/html/public!g' /etc/apache2/apache2.conf /etc/apache2/conf-available/*.conf
+# =========================
+# Clear Laravel Caches
+# (NO key:generate here ❌)
+# =========================
+RUN php artisan config:clear \
+ && php artisan cache:clear \
+ && php artisan route:clear \
+ && php artisan view:clear
 
+# =========================
+# Apache Document Root → /public
+# =========================
+ENV APACHE_DOCUMENT_ROOT=/var/www/html/public
+
+RUN sed -ri 's!/var/www/html!/var/www/html/public!g' \
+    /etc/apache2/sites-available/*.conf \
+ && sed -ri 's!/var/www/!/var/www/html/public!g' \
+    /etc/apache2/apache2.conf /etc/apache2/conf-available/*.conf
+
+# =========================
+# Expose Port
+# =========================
 EXPOSE 80
 
-# Clear cache, run migrations, start Apache
-CMD php artisan key:generate --force \
- && php artisan config:clear \
- && php artisan route:clear \
- && php artisan cache:clear \
- && php artisan migrate --force \
- && apache2-foreground
+# =========================
+# Start Apache
+# =========================
+CMD ["apache2-foreground"]
