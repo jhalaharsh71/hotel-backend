@@ -14,24 +14,25 @@ RUN a2enmod rewrite
 RUN apt-get update && apt-get install -y \
     git \
     unzip \
+    zip \
+    curl \
     libzip-dev \
     libpng-dev \
     libjpeg-dev \
     libfreetype6-dev \
-    libonig-dev \
     libxml2-dev \
-    zip \
-    curl \
     && docker-php-ext-configure gd --with-freetype --with-jpeg \
     && docker-php-ext-install \
         pdo \
-        pdo_pgsql \
+        pdo_mysql \
         mbstring \
         zip \
         exif \
         pcntl \
         bcmath \
-        gd
+        gd \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
 
 # =========================
 # Set Working Directory
@@ -51,22 +52,16 @@ COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 # =========================
 # Install PHP Dependencies
 # =========================
-RUN composer install --no-dev --optimize-autoloader --no-interaction
+RUN composer install \
+    --no-dev \
+    --optimize-autoloader \
+    --no-interaction
 
 # =========================
 # Laravel Permissions
 # =========================
 RUN chown -R www-data:www-data /var/www/html \
-    && chmod -R 775 /var/www/html/storage /var/www/html/bootstrap/cache
-
-# =========================
-# Clear Laravel Caches
-# (NO key:generate here ❌)
-# =========================
-RUN php artisan config:clear \
- && php artisan cache:clear \
- && php artisan route:clear \
- && php artisan view:clear
+    && chmod -R 775 storage bootstrap/cache
 
 # =========================
 # Apache Document Root → /public
@@ -76,14 +71,15 @@ ENV APACHE_DOCUMENT_ROOT=/var/www/html/public
 RUN sed -ri 's!/var/www/html!/var/www/html/public!g' \
     /etc/apache2/sites-available/*.conf \
  && sed -ri 's!/var/www/!/var/www/html/public!g' \
-    /etc/apache2/apache2.conf /etc/apache2/conf-available/*.conf
+    /etc/apache2/apache2.conf \
+    /etc/apache2/conf-available/*.conf
 
 # =========================
-# Expose Port
+# Railway Port Support
 # =========================
-EXPOSE 80
+RUN sed -i 's/Listen 80/Listen ${PORT}/' /etc/apache2/ports.conf
 
 # =========================
 # Start Apache
 # =========================
-CMD php artisan migrate --force && apache2-foreground
+CMD apache2-foreground
