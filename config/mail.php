@@ -7,12 +7,12 @@ return [
     | Default Mailer
     |--------------------------------------------------------------------------
     |
-    | Force SMTP as default mailer.
-    | This avoids falling back to "log" on Railway.
+    | We use Brevo API instead of SMTP.
+    | SMTP often times out on Railway.
     |
     */
 
-    'default' => env('MAIL_MAILER', 'smtp'),
+    'default' => env('MAIL_MAILER', 'brevo'),
 
     /*
     |--------------------------------------------------------------------------
@@ -22,33 +22,57 @@ return [
 
     'mailers' => [
 
+        /*
+        |--------------------------------------------------
+        | Brevo API Mailer (RECOMMENDED)
+        |--------------------------------------------------
+        */
+        'brevo' => [
+            'transport' => 'brevo',
+        ],
+
+        /*
+        |--------------------------------------------------
+        | SMTP (kept only as fallback, not used)
+        |--------------------------------------------------
+        */
         'smtp' => [
             'transport' => 'smtp',
-            'host' => env('MAIL_HOST', 'smtp.gmail.com'),
+            'host' => env('MAIL_HOST', 'smtp-relay.brevo.com'),
             'port' => env('MAIL_PORT', 587),
             'encryption' => env('MAIL_ENCRYPTION', 'tls'),
             'username' => env('MAIL_USERNAME'),
             'password' => env('MAIL_PASSWORD'),
-
-            // ⭐ IMPORTANT: prevents 60s timeout on Railway
             'timeout' => 10,
-
-            // ⭐ Fixes Gmail EHLO issues in containers
-            'local_domain' => env('MAIL_EHLO_DOMAIN', 'localhost'),
         ],
 
+        /*
+        |--------------------------------------------------
+        | Log mailer
+        |--------------------------------------------------
+        */
         'log' => [
             'transport' => 'log',
             'channel' => env('MAIL_LOG_CHANNEL'),
         ],
 
+        /*
+        |--------------------------------------------------
+        | Array mailer
+        |--------------------------------------------------
+        */
         'array' => [
             'transport' => 'array',
         ],
 
+        /*
+        |--------------------------------------------------
+        | Failover
+        |--------------------------------------------------
+        */
         'failover' => [
             'transport' => 'failover',
-            'mailers' => ['smtp', 'log'],
+            'mailers' => ['brevo', 'log'],
         ],
     ],
 
@@ -59,7 +83,7 @@ return [
     */
 
     'from' => [
-        'address' => env('MAIL_FROM_ADDRESS', 'no-reply@example.com'),
+        'address' => env('MAIL_FROM_ADDRESS', 'jhalaharsh71@gmail.com'),
         'name' => env('MAIL_FROM_NAME', 'Hotel Demo App'),
     ],
 
