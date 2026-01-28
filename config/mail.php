@@ -7,8 +7,8 @@ return [
     | Default Mailer
     |--------------------------------------------------------------------------
     |
-    | We use Brevo API instead of SMTP.
-    | SMTP often times out on Railway.
+    | We force Brevo API as the default mailer.
+    | This is the most reliable option on Railway.
     |
     */
 
@@ -23,53 +23,49 @@ return [
     'mailers' => [
 
         /*
-        |--------------------------------------------------
-        | Brevo API Mailer (RECOMMENDED)
-        |--------------------------------------------------
+        |--------------------------------------------------------------------------
+        | Brevo API Mailer (PRIMARY)
+        |--------------------------------------------------------------------------
+        |
+        | Requires symfony/brevo-mailer
+        | Uses MAILER_DSN from environment variables
+        |
         */
+
         'brevo' => [
             'transport' => 'brevo',
         ],
 
         /*
-        |--------------------------------------------------
-        | SMTP (kept only as fallback, not used)
-        |--------------------------------------------------
+        |--------------------------------------------------------------------------
+        | Log Mailer (Fallback / Debug)
+        |--------------------------------------------------------------------------
         */
-        'smtp' => [
-            'transport' => 'smtp',
-            'host' => env('MAIL_HOST', 'smtp-relay.brevo.com'),
-            'port' => env('MAIL_PORT', 587),
-            'encryption' => env('MAIL_ENCRYPTION', 'tls'),
-            'username' => env('MAIL_USERNAME'),
-            'password' => env('MAIL_PASSWORD'),
-            'timeout' => 10,
-        ],
 
-        /*
-        |--------------------------------------------------
-        | Log mailer
-        |--------------------------------------------------
-        */
         'log' => [
             'transport' => 'log',
             'channel' => env('MAIL_LOG_CHANNEL'),
         ],
 
         /*
-        |--------------------------------------------------
-        | Array mailer
-        |--------------------------------------------------
+        |--------------------------------------------------------------------------
+        | Array Mailer (Testing only)
+        |--------------------------------------------------------------------------
         */
+
         'array' => [
             'transport' => 'array',
         ],
 
         /*
-        |--------------------------------------------------
-        | Failover
-        |--------------------------------------------------
+        |--------------------------------------------------------------------------
+        | Failover Mailer
+        |--------------------------------------------------------------------------
+        |
+        | If Brevo fails, logs the email instead of crashing.
+        |
         */
+
         'failover' => [
             'transport' => 'failover',
             'mailers' => ['brevo', 'log'],
@@ -83,7 +79,7 @@ return [
     */
 
     'from' => [
-        'address' => env('MAIL_FROM_ADDRESS', 'jhalaharsh71@gmail.com'),
+        'address' => env('MAIL_FROM_ADDRESS', 'no-reply@example.com'),
         'name' => env('MAIL_FROM_NAME', 'Hotel Demo App'),
     ],
 
