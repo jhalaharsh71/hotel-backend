@@ -259,6 +259,63 @@ public function update(Request $request, Booking $booking)
         ], 422);
     }
 
+    // STAY DATE UPDATES
+    // Handle simultaneous check-in and check-out changes first (only when check-in actually changes)
+ // STAY DATE UPDATES
+if ($request->has('check_in_date') && $request->has('check_out_date')) {
+
+    // Determine if check-in date actually changed
+    try {
+        $reqCheckIn  = (new \DateTime($request->check_in_date))->format('Y-m-d');
+        $bookCheckIn = (new \DateTime($booking->check_in_date))->format('Y-m-d');
+        $checkInChanged = $reqCheckIn !== $bookCheckIn;
+    } catch (\Exception $e) {
+        $checkInChanged = true;
+    }
+
+    // If check-in changed → only allowed when status is active
+    if ($checkInChanged && $booking->status !== 'active') {
+        return response()->json([
+            'message' => 'Check-in date can only be modified when stay status is active.'
+        ], 422);
+    }
+
+    $request->validate([
+        'check_in_date'  => 'required|date',
+        'check_out_date' => 'required|date|after:check_in_date',
+    ]);
+
+    $newCheckInDate  = new \DateTime($request->check_in_date);
+    $newCheckoutDate = new \DateTime($request->check_out_date);
+
+    if ($newCheckInDate->format('Y-m-d') === $newCheckoutDate->format('Y-m-d')) {
+        return response()->json([
+            'message' => 'Check-in and check-out dates cannot be the same.'
+        ], 422);
+    }
+
+    $nights = $newCheckInDate->diff($newCheckoutDate)->days;
+    $roomPrice = $booking->room->price;
+
+    $newTotalAmount = $nights * $roomPrice;
+
+    if ($newTotalAmount < $booking->paid_amount) {
+        $newTotalAmount = $booking->paid_amount;
+    }
+
+    $newDueAmount = max(0, $newTotalAmount - $booking->paid_amount);
+
+    $booking->update([
+        'check_in_date'  => $request->check_in_date,
+        'check_out_date' => $request->check_out_date,
+        'total_amount'  => $newTotalAmount,
+        'due_amount'    => $newDueAmount,
+    ]);
+
+    return $booking;
+}
+
+
     // STAY EXTENSION/REDUCTION UPDATE - Only check-out date, no room change
     if ($request->has('check_out_date')) {
 
@@ -310,6 +367,40 @@ public function update(Request $request, Booking $booking)
             'check_out_date' => $request->check_out_date,
             'total_amount' => $newTotalAmount,
             'due_amount' => $newDueAmount,
+        ]);
+
+        return $booking;
+    }
+
+    // ===== CHECK-IN DATE UPDATE - Only when status is "active" =====
+    if ($request->has('check_in_date')) {
+        // Validate: check-in date can only be updated when status is "active"
+        if ($booking->status !== 'active') {
+            return response()->json([
+                'message' => 'Check-in date can only be modified when stay status is active.'
+            ], 422);
+        }
+
+        $request->validate([
+            'check_in_date' => 'required|date|before:check_out_date',
+        ]);
+
+        $newCheckInDate = new \DateTime($request->check_in_date);
+        $checkOutDate = new \DateTime($booking->check_out_date);
+        
+        // Ensure check_in_date is not same as check_out_date
+        if ($newCheckInDate->format('Y-m-d') === $checkOutDate->format('Y-m-d')) {
+            return response()->json(['message' => 'Check-in and check-out dates cannot be the same.'], 422);
+        }
+        
+        // Ensure check_in_date is not after check_out_date
+        if ($newCheckInDate > $checkOutDate) {
+            return response()->json(['message' => 'Check-in date cannot be after check-out date.'], 422);
+        }
+
+        // Update booking with new check-in date
+        $booking->update([
+            'check_in_date' => $request->check_in_date,
         ]);
 
         return $booking;
@@ -405,8 +496,21 @@ public function changeRoom(Request $request, Booking $booking)
     ]);
 
     $newRoomId = $request->new_room_id;
-    $oldRoom = $booking->room;
     $newRoom = Room::findOrFail($newRoomId);
+
+    // ===== DETECT REPEATED ROOM CHANGE =====
+    // Check if there's a previous room change for this booking
+    $lastRoomChange = $booking->roomChanges()->latest('changed_at')->first();
+    $isRepeatedChange = $lastRoomChange !== null;
+    
+    // For repeated room changes, use the old room from the previous change if change_after_days > 0
+    if ($isRepeatedChange && $lastRoomChange->change_after_days > 0) {
+        // Use the previous room from the last room change record
+        $oldRoom = $lastRoomChange->oldRoom;
+    } else {
+        // First room change or same-day change: use current booking room
+        $oldRoom = $booking->room;
+    }
 
     // Check if new room belongs to same hotel
     if ($newRoom->hotel_id !== $booking->hotel_id) {
@@ -441,34 +545,127 @@ public function changeRoom(Request $request, Booking $booking)
     }
 
     // Use transaction to ensure data consistency
-    return DB::transaction(function () use ($booking, $oldRoom, $newRoom, $changeAfterDays, $totalDays) {
-        $oldRoomPrice = $oldRoom->price;
-        $newRoomPrice = $newRoom->price;
+    return DB::transaction(function () use ($booking, $newRoom, $changeAfterDays, $totalDays) {
         $oldTotalAmount = $booking->total_amount;
 
-        // Calculate new total amount based on partial stay
+        // Sum of service charges remains unchanged
         $servicesTotal = $booking->bookingServices()->sum('total_price');
-        
-        if ($totalDays > 1 && $changeAfterDays !== null) {
-            // Partial stay pricing - allows X=0 for same-day change
-            $oldRoomDays = $changeAfterDays;
-            $newRoomDays = $totalDays - $changeAfterDays;
-            
-            $oldRoomStayCost = $oldRoomDays * $oldRoomPrice;
-            $newRoomStayCost = $newRoomDays * $newRoomPrice;
-            
-            $newTotalAmount = $oldRoomStayCost + $newRoomStayCost + $servicesTotal;
+
+        // Fetch existing room changes for this booking (sorted)
+        $existingChanges = $booking->roomChanges()
+            ->orderBy('change_after_days', 'asc')
+            ->get();
+
+        // Determine the original room at check-in
+        if ($existingChanges->isNotEmpty()) {
+            $originalRoomId = $existingChanges->first()->old_room_id;
         } else {
-            // Single day or full stay replacement
-            $newTotalAmount = $newRoomPrice + $servicesTotal;
-            $oldRoomStayCost = null;
-            $newRoomStayCost = null;
+            $originalRoomId = $booking->room_id;
         }
 
-        // Store room change history
+        // Build events list: existing changes + the new change event
+        $events = [];
+        foreach ($existingChanges as $ec) {
+            $events[] = [
+                'day' => (int) $ec->change_after_days,
+                'room_id' => (int) $ec->new_room_id,
+                'is_new' => false,
+            ];
+        }
+
+        // Append the new change event
+        $events[] = [
+            'day' => (int) $changeAfterDays,
+            'room_id' => (int) $newRoom->id,
+            'is_new' => true,
+        ];
+
+        // Sort events by day ASC
+        usort($events, function ($a, $b) {
+            return $a['day'] <=> $b['day'];
+        });
+
+        // Prepare room price lookup for all involved rooms to avoid repeated queries
+        $roomIds = [$originalRoomId];
+        foreach ($events as $ev) {
+            $roomIds[] = $ev['room_id'];
+        }
+        $roomIds = array_values(array_unique($roomIds));
+        $prices = Room::whereIn('id', $roomIds)->get()->pluck('price', 'id')->toArray();
+
+        // Reconstruct pricing segments and compute total
+        $startDay = 0;
+        $currentRoomId = $originalRoomId;
+        $newTotalAmount = 0;
+
+        // Values to store specifically for the new change record
+        $newChangeOldStayCost = null;
+        $newChangeNewStayCost = null;
+
+        $countEvents = count($events);
+        for ($i = 0; $i < $countEvents; $i++) {
+            $ev = $events[$i];
+            $day = $ev['day'];
+
+            // Clamp day within [0, $totalDays]
+            if ($day < 0) $day = 0;
+            if ($day > $totalDays) $day = $totalDays;
+
+            $segmentDays = $day - $startDay;
+            if ($segmentDays > 0) {
+                $price = isset($prices[$currentRoomId]) ? $prices[$currentRoomId] : 0;
+                $newTotalAmount += $segmentDays * $price;
+            }
+
+            // If this event is the new change, record old stay cost and compute the next segment for the new room
+            if ($ev['is_new']) {
+                $oldPrice = isset($prices[$currentRoomId]) ? $prices[$currentRoomId] : 0;
+                $newChangeOldStayCost = max(0, $segmentDays * $oldPrice);
+
+                $nextDay = ($i + 1) < $countEvents ? $events[$i + 1]['day'] : $totalDays;
+                if ($nextDay < 0) $nextDay = 0;
+                if ($nextDay > $totalDays) $nextDay = $totalDays;
+                $newRoomDays = $nextDay - $day;
+                if ($newRoomDays > 0) {
+                    $newPrice = isset($prices[$ev['room_id']]) ? $prices[$ev['room_id']] : 0;
+                    $newChangeNewStayCost = $newRoomDays * $newPrice;
+                } else {
+                    $newChangeNewStayCost = 0;
+                }
+            }
+
+            // advance
+            $startDay = $day;
+            $currentRoomId = $ev['room_id'];
+        }
+
+        // Final segment from last event (or from start) until checkout
+        $finalSegmentDays = $totalDays - $startDay;
+        if ($finalSegmentDays > 0) {
+            $price = isset($prices[$currentRoomId]) ? $prices[$currentRoomId] : 0;
+            $newTotalAmount += $finalSegmentDays * $price;
+        }
+
+        // Add services total
+        $newTotalAmount += $servicesTotal;
+
+        // Determine the old_room_id for this new change (the room active just before change_after_days)
+        $oldRoomIdForChange = $originalRoomId;
+        foreach ($existingChanges as $ec) {
+            if ($ec->change_after_days < $changeAfterDays) {
+                $oldRoomIdForChange = $ec->new_room_id;
+            } else {
+                break;
+            }
+        }
+
+        $oldRoomPrice = isset($prices[$oldRoomIdForChange]) ? $prices[$oldRoomIdForChange] : 0;
+        $newRoomPrice = isset($prices[$newRoom->id]) ? $prices[$newRoom->id] : 0;
+
+        // Store room change history (with accurate segment costs for this change)
         BookingRoomChange::create([
             'booking_id' => $booking->id,
-            'old_room_id' => $oldRoom->id,
+            'old_room_id' => $oldRoomIdForChange,
             'new_room_id' => $newRoom->id,
             'old_room_price' => $oldRoomPrice,
             'new_room_price' => $newRoomPrice,
@@ -477,8 +674,8 @@ public function changeRoom(Request $request, Booking $booking)
             'changed_by_user_id' => auth()->id(),
             'changed_at' => now(),
             'change_after_days' => $changeAfterDays,
-            'old_room_stay_cost' => $oldRoomStayCost,
-            'new_room_stay_cost' => $newRoomStayCost,
+            'old_room_stay_cost' => $newChangeOldStayCost,
+            'new_room_stay_cost' => $newChangeNewStayCost,
         ]);
 
         // Update booking with new room and recalculated amounts
@@ -494,6 +691,25 @@ public function changeRoom(Request $request, Booking $booking)
         ]);
     });
 }
+
+    /**
+     * Get room change history for a booking
+     */
+    public function getRoomChanges(Booking $booking)
+    {
+        // Authorization check
+        if ($booking->hotel_id !== auth()->user()->hotel_id) {
+            return response()->json(['message' => 'Forbidden'], 403);
+        }
+
+        $roomChanges = $booking->roomChanges()
+            ->with(['oldRoom', 'newRoom', 'changedBy'])
+            ->orderBy('changed_at', 'ASC')
+            ->get();
+
+        return response()->json($roomChanges);
+    }
+
   /* ===== TASK 1: PREVENT CANCEL AFTER CHECKOUT ===== */
   public function cancelBooking(Booking $booking)
     {

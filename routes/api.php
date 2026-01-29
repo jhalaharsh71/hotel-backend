@@ -86,6 +86,7 @@ Route::middleware(['auth:sanctum', 'admin'])
     [AdminBookingController::class, 'addPayment']
 );
         Route::put('bookings/{booking}/change-room', [AdminBookingController::class, 'changeRoom']);
+        Route::get('bookings/{booking}/room-changes', [AdminBookingController::class, 'getRoomChanges']);
         Route::patch('bookings/{booking}/confirm', [AdminBookingController::class, 'confirmBooking']);
         Route::patch('bookings/{booking}/checkout', [AdminBookingController::class, 'checkoutBooking']);
         Route::patch('bookings/{booking}/check-in', [AdminBookingController::class, 'checkInBooking']);
