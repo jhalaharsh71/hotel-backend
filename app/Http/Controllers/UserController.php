@@ -353,6 +353,13 @@ class UserController extends Controller
         $hotelGroups = $availableRooms->groupBy('hotel_id')->map(function ($rooms) {
             $hotel = $rooms->first()->hotel;
             
+            // Fetch active gallery images including banner image for this hotel
+            $galleries = DB::table('hotel_galleries')
+                ->where('hotel_id', $hotel->id)
+                ->where('is_active', true)
+                ->select('id', 'image_path', 'is_banner_image', 'is_active')
+                ->get();
+            
             // Group rooms by room_type within this hotel
             $roomTypes = $rooms->groupBy('room_type')->map(function ($roomGroup) {
                 $firstRoom = $roomGroup->first();
@@ -372,6 +379,7 @@ class UserController extends Controller
                 'hotel_contact' => $hotel->contact_no,
                 'room_types' => $roomTypes,
                 'total_rooms_in_hotel' => $rooms->count(),
+                'galleries' => $galleries,
             ];
         })->values();
         
@@ -825,5 +833,53 @@ class UserController extends Controller
             ->get();
 
         return response()->json($guests, 200);
+    }
+
+    /**
+     * Get all guests associated with ANY booking created by the authenticated user
+     * Implements: fetch bookings by user -> collect booking ids -> fetch guests where booking_id in booking ids
+     * Filters out incomplete guest records (required fields must be present)
+     */
+    public function getUserGuestsAll(Request $request)
+    {
+        if (!$request->user()) {
+            return response()->json([
+                'message' => 'Unauthorized',
+            ], 401);
+        }
+
+        $userId = $request->user()->id;
+
+        // Fetch bookings belonging to this user (created_by_user_id)
+        $bookingIds = Booking::where('created_by_user_id', $userId)->pluck('id')->toArray();
+
+        if (empty($bookingIds)) {
+            return response()->json([
+                'message' => 'No guests found',
+                'guests' => [],
+            ], 200);
+        }
+
+        // Fetch guests linked to these bookings
+        $guests = \App\Models\Guest::whereIn('booking_id', $bookingIds)
+            ->where('status', 'active')
+            ->get();
+
+        // Filter to only include complete guest records
+        $required = ['first_name', 'last_name', 'gender', 'age', 'phone', 'email'];
+        $filtered = $guests->filter(function ($g) use ($required) {
+            foreach ($required as $f) {
+                if (!isset($g->$f) || $g->$f === null || (is_string($g->$f) && trim($g->$f) === '')) {
+                    return false;
+                }
+            }
+            return true;
+        })->values();
+
+        return response()->json([
+            'message' => 'User guests retrieved',
+            'guests' => $filtered,
+            'total' => $filtered->count(),
+        ], 200);
     }
 }

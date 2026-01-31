@@ -17,6 +17,7 @@ class Hotel extends Model
         'city',
         'state',
         'pincode',
+        'about_hotel',
         'contact_no',
         'status',
     ];
@@ -40,5 +41,25 @@ class Hotel extends Model
     public function users()
     {
         return $this->hasMany(User::class);
+    }
+
+    public function roomFeatures()
+    {
+        return $this->hasMany(RoomFeature::class)->where('is_active', true);
+    }
+
+    public function facilities()
+    {
+        return $this->hasMany(HotelFacility::class)->where('is_active', true);
+    }
+
+    public function galleries()
+    {
+        return $this->hasMany(HotelGallery::class)->where('is_active', true)->orderBy('sort_order');
+    }
+
+    public function bannerImage()
+    {
+        return $this->hasOne(HotelGallery::class)->where('is_banner_image', true)->where('is_active', true);
     }
 }

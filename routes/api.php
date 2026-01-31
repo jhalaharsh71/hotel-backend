@@ -12,6 +12,7 @@ use App\Http\Controllers\Api\AdminUserController;
 use App\Http\Controllers\Api\UserAuthController;
 use App\Http\Controllers\Api\SuperAdminBookingController;
 use App\Http\Controllers\Api\ReviewController;
+use App\Http\Controllers\Api\HotelSettingsController;
 use Illuminate\Support\Facades\Route;
 
 Route::post('/login', [AdminAuthController::class, 'login']);
@@ -34,6 +35,7 @@ Route::prefix('user')->group(function () {
     Route::get('/hotels/{hotelId}', [UserController::class, 'getHotelDetails']);
     Route::post('/check-room-availability', [UserController::class, 'checkRoomAvailability']);
     Route::get('/hotels/{hotelId}/reviews', [ReviewController::class, 'getHotelReviews']);
+    Route::get('/hotels/{hotelId}/settings', [HotelSettingsController::class, 'show']); // Public endpoint for fetching hotel settings
     Route::get('/reviews', [ReviewController::class, 'getReviewsByHotelId']); // Query parameter endpoint
     
     // Protected user routes - requires authentication
@@ -41,6 +43,8 @@ Route::prefix('user')->group(function () {
         Route::get('/profile', [UserController::class, 'profile']); // User profile API
         Route::post('/create-booking', [UserController::class, 'createBooking']);
         Route::get('/bookings', [UserController::class, 'getUserBookings']);
+        // Fetch all guests belonging to current user's bookings (derived via bookings)
+        Route::get('/guests', [UserController::class, 'getUserGuestsAll']);
         Route::get('/bookings/{id}', [UserController::class, 'getUserBooking']);
         Route::put('/bookings/{id}', [UserController::class, 'updateUserBooking']);
         Route::put('/bookings/{id}/cancel', [UserController::class, 'cancelUserBooking']);
@@ -62,6 +66,23 @@ Route::middleware(['auth:sanctum', 'admin'])
 
         // Dashboard
         Route::get('/dashboard', [AdminDashboardController::class, 'index']);
+
+        // Hotel Settings (About, Features, Facilities, Galleries)
+        // Uses authenticated user's hotel_id automatically
+        Route::get('hotel/name', [HotelSettingsController::class, 'getHotelName']);
+        Route::get('hotel/settings', [HotelSettingsController::class, 'show']);
+        Route::put('hotel/about', [HotelSettingsController::class, 'updateAbout']);
+        Route::post('hotel/room-features', [HotelSettingsController::class, 'addRoomFeature']);
+        Route::delete('hotel/room-features/{featureId}', [HotelSettingsController::class, 'deleteRoomFeature']);
+        Route::put('hotel/room-features/{featureId}/toggle-active', [HotelSettingsController::class, 'toggleRoomFeatureActive']);
+        Route::post('hotel/facilities', [HotelSettingsController::class, 'addFacility']);
+        Route::delete('hotel/facilities/{facilityId}', [HotelSettingsController::class, 'deleteFacility']);
+        Route::put('hotel/facilities/{facilityId}/toggle-active', [HotelSettingsController::class, 'toggleFacilityActive']);
+        Route::post('hotel/galleries', [HotelSettingsController::class, 'uploadGalleryImages']);
+        Route::delete('hotel/galleries/{imageId}', [HotelSettingsController::class, 'deleteGalleryImage']);
+        Route::put('hotel/galleries/{imageId}/toggle-active', [HotelSettingsController::class, 'toggleGalleryActive']);
+        Route::put('hotel/galleries/{imageId}/set-banner', [HotelSettingsController::class, 'setBannerImage']);
+        Route::put('hotel/galleries/sort', [HotelSettingsController::class, 'updateGallerySortOrder']);
 
         // Rooms CRUD
         Route::apiResource('rooms', AdminRoomController::class);
