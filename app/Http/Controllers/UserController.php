@@ -354,11 +354,20 @@ class UserController extends Controller
             $hotel = $rooms->first()->hotel;
             
             // Fetch active gallery images including banner image for this hotel
+            // Transform image_path to image_url with asset URL
             $galleries = DB::table('hotel_galleries')
                 ->where('hotel_id', $hotel->id)
                 ->where('is_active', true)
                 ->select('id', 'image_path', 'is_banner_image', 'is_active')
-                ->get();
+                ->get()
+                ->map(function ($gallery) {
+                    return [
+                        'id' => $gallery->id,
+                        'image_url' => asset('storage/' . $gallery->image_path),
+                        'is_banner_image' => (int) $gallery->is_banner_image,
+                        'is_active' => (bool) $gallery->is_active,
+                    ];
+                });
             
             // Group rooms by room_type within this hotel
             $roomTypes = $rooms->groupBy('room_type')->map(function ($roomGroup) {
@@ -379,7 +388,7 @@ class UserController extends Controller
                 'hotel_contact' => $hotel->contact_no,
                 'room_types' => $roomTypes,
                 'total_rooms_in_hotel' => $rooms->count(),
-                'galleries' => $galleries,
+                'galleries' => $galleries->values(),
             ];
         })->values();
         

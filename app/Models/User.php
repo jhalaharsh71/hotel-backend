@@ -20,7 +20,8 @@ class User extends Authenticatable
         'password',
         'role',       
         'hotel_id',
-        'status'
+        'status',
+        'is_flagged',
     ];
 
     /**

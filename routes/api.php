@@ -12,7 +12,9 @@ use App\Http\Controllers\Api\AdminUserController;
 use App\Http\Controllers\Api\UserAuthController;
 use App\Http\Controllers\Api\SuperAdminBookingController;
 use App\Http\Controllers\Api\ReviewController;
+use App\Http\Controllers\Api\SuperAdminReviewController;
 use App\Http\Controllers\Api\HotelSettingsController;
+use App\Http\Controllers\Api\MapController;
 use Illuminate\Support\Facades\Route;
 
 Route::post('/login', [AdminAuthController::class, 'login']);
@@ -37,6 +39,11 @@ Route::prefix('user')->group(function () {
     Route::get('/hotels/{hotelId}/reviews', [ReviewController::class, 'getHotelReviews']);
     Route::get('/hotels/{hotelId}/settings', [HotelSettingsController::class, 'show']); // Public endpoint for fetching hotel settings
     Route::get('/reviews', [ReviewController::class, 'getReviewsByHotelId']); // Query parameter endpoint
+    
+    // MAP ROUTES - PUBLIC ENDPOINTS FOR GOOGLE MAPS INTEGRATION
+    Route::get('/map/hotels', [MapController::class, 'getAllHotels']);
+    Route::get('/map/nearby-hotels', [MapController::class, 'getNearbyHotels']);
+    Route::get('/map/hotels-by-city', [MapController::class, 'getHotelsByCity']);
     
     // Protected user routes - requires authentication
     Route::middleware('auth:sanctum')->group(function () {
@@ -131,9 +138,11 @@ Route::middleware(['auth:sanctum', 'admin'])
         Route::get('reports', [AdminReportController::class, 'index']);
         Route::get('reports/download', [AdminReportController::class, 'downloadReport']);
 
-        // Reviews (admin can view and delete)
+        // Reviews (admin can view, delete, and reply)
         Route::get('reviews', [ReviewController::class, 'adminGetHotelReviews']);
         Route::delete('reviews/{reviewId}', [ReviewController::class, 'adminDeleteReview']);
+        Route::post('reviews/{reviewId}/reply', [ReviewController::class, 'replyToReview']);
+        Route::delete('reviews/{reviewId}/reply', [ReviewController::class, 'deleteReply']);
     });
 
 Route::middleware(['auth:sanctum', 'superadmin'])
@@ -156,6 +165,12 @@ Route::middleware(['auth:sanctum', 'superadmin'])
         Route::put('bookings/{booking}', [SuperAdminBookingController::class, 'update']);
         Route::post('bookings/{booking}/add-payment', [SuperAdminBookingController::class, 'addPayment']);
         Route::patch('bookings/{booking}/status', [SuperAdminBookingController::class, 'updateStatus']);
+
+        // Super Admin Reviews Management
+        Route::get('reviews', [SuperAdminReviewController::class, 'index']);
+        Route::delete('reviews/{reviewId}', [SuperAdminReviewController::class, 'destroy']);
+        Route::post('users/{userId}/flag', [SuperAdminReviewController::class, 'flagUser']);
+        Route::post('users/{userId}/unflag', [SuperAdminReviewController::class, 'unflagUser']);
     });
 
     Route::get('/hotel/dashboard',[HotelController::class,'getHotelDashboard']);

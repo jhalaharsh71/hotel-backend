@@ -20,6 +20,8 @@ class Hotel extends Model
         'about_hotel',
         'contact_no',
         'status',
+        'latitude',
+        'longitude',
     ];
 
 
@@ -53,13 +55,19 @@ class Hotel extends Model
         return $this->hasMany(HotelFacility::class)->where('is_active', true);
     }
 
-    public function galleries()
-    {
-        return $this->hasMany(HotelGallery::class)->where('is_active', true)->orderBy('sort_order');
-    }
+public function hotel_galleries()
+{
+    return $this->hasMany(HotelGallery::class, 'hotel_id', 'id');
+}
+
 
     public function bannerImage()
     {
         return $this->hasOne(HotelGallery::class)->where('is_banner_image', true)->where('is_active', true);
     }
+    public function reviews()
+{
+    return $this->hasMany(Review::class, 'hotel_id', 'id');
+}
+
 }

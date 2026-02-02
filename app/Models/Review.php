@@ -17,6 +17,7 @@ class Review extends Model
         'rating',
         'title',
         'comment',
+        'admin_reply',
         'is_verified',
         'status',
     ];
